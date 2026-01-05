@@ -29,6 +29,13 @@ Follow prompts, then restart.
 - **Network hygiene**: DNS cache flush.
 - **Account hygiene (optional)**: Roblox-related credentials removed via `cmdkey`.
 
+## What It Cleans (macOS)
+- **Processes**: kills Roblox app and related helpers before removal.
+- **Folders**: `~/Library/Application Support/Roblox`, `~/Library/Caches/com.roblox.Roblox`, `~/Library/Preferences/com.roblox.Roblox.plist`, `~/Library/Logs/Roblox`, `~/Library/Saved Application State/com.roblox.Roblox.savedState`.
+- **System-wide traces (if present)**: `/Library/Application Support/Roblox`, `/Library/Logs/Roblox`.
+- **Temp/cache**: `/tmp` Roblox artifacts and cache folders under `~/Library/Caches`.
+- **Network hygiene**: optional DNS cache flush (`dscacheutil -flushcache` and `sudo killall -HUP mDNSResponder`).
+
 ## Safety & Notes
 - Always run as admin on Windows for full cleanup.
 - Backup anything important before running; this is meant to remove all Roblox traces.
