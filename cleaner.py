@@ -154,6 +154,14 @@ class RobloxCleaner:
                 Path("C:\\ProgramData\\Roblox"),
                 Path(os.environ.get("USERPROFILE", "")) / "AppData\\LocalLow\\Roblox",
             ]
+            
+            shortcut_locations = [
+                Path(os.environ.get("USERPROFILE", "")) / "Desktop",
+                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
+                Path(os.environ.get("ProgramData", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
+                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Internet Explorer\\Quick Launch",
+                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Windows\\Recent",
+            ]
         else:
             folders = [
                 Path.home() / "Library/Application Support/Roblox",
@@ -162,6 +170,7 @@ class RobloxCleaner:
                 Path.home() / "Library/Logs/Roblox",
                 Path.home() / "Library/Saved Application State/com.roblox.Roblox.savedState",
             ]
+            shortcut_locations = []
         
         print("Deleting leftover folders...")
         for folder in folders:
@@ -174,6 +183,21 @@ class RobloxCleaner:
                     print(f"  Deleted {folder}")
                 except Exception as e:
                     print(f"  [WARN] Could not delete {folder}: {e}")
+        
+        if self.platform == "win32":
+            print("Deleting shortcuts and icons...")
+            for location in shortcut_locations:
+                if location.exists():
+                    try:
+                        for shortcut in location.rglob("*roblox*.lnk"):
+                            try:
+                                shortcut.unlink()
+                                print(f"  Deleted shortcut: {shortcut.name}")
+                            except Exception as e:
+                                print(f"  [WARN] Could not delete {shortcut}: {e}")
+                    except Exception as e:
+                        print(f"  [WARN] Error scanning {location}: {e}")
+        
         print("  Folder cleanup complete.")
         return True
     
@@ -221,16 +245,21 @@ class RobloxCleaner:
         return True
     
     def flush_dns(self) -> bool:
-        print("Flushing DNS cache...")
+        print("Flushing DNS cache and resetting IP...")
         try:
             if self.platform == "win32":
+                subprocess.run("ipconfig /release", shell=True, capture_output=True, timeout=10)
+                print("  IP released.")
+                subprocess.run("ipconfig /renew", shell=True, capture_output=True, timeout=10)
+                print("  IP renewed.")
                 subprocess.run("ipconfig /flushdns", shell=True, capture_output=True, timeout=5)
+                print("  DNS cache flushed.")
             else:
                 subprocess.run("dscacheutil -flushcache", shell=True, capture_output=True, timeout=5)
                 subprocess.run("sudo killall -HUP mDNSResponder", shell=True, capture_output=True, timeout=5)
-            print("  DNS cache flushed.")
+                print("  DNS cache flushed.")
         except Exception as e:
-            print(f"  [WARN] DNS flush error: {e}")
+            print(f"  [WARN] Network reset error: {e}")
         return True
     
     def delete_credentials(self) -> bool:
@@ -304,6 +333,11 @@ class RobloxCleaner:
         
         # Run cleanup
         self.run_cleanup()
+        
+        print("Press Ctrl+C to exit...")
+        while True:
+            import time
+            time.sleep(1)
 
 if __name__ == "__main__":
     cleaner = RobloxCleaner()
