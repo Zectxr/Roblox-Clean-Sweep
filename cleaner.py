@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Roblox Clean Sweep - Python Edition
-Comprehensive Roblox removal tool for Windows and macOS
-"""
 
 import os
 import sys
@@ -12,7 +8,6 @@ import ctypes
 from pathlib import Path
 from typing import Dict, Tuple
 
-# Colors for console output
 class Colors:
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
@@ -35,27 +30,23 @@ class RobloxCleaner:
         self.platform = sys.platform
         
     def is_admin(self) -> bool:
-        """Check if running with admin/root privileges."""
         if self.platform == "win32":
             try:
                 import ctypes
                 return bool(ctypes.windll.shell.IsUserAnAdmin())
             except Exception as e:
-                # Fallback: try to access a protected registry key
                 try:
                     subprocess.run("reg query HKLM", shell=True, capture_output=True, timeout=2)
                     return True
                 except:
                     return False
-        else:  # macOS/Linux
+        else:
             return os.geteuid() == 0
     
     def request_elevation(self):
-        """Request elevated privileges on Windows."""
         if self.platform == "win32":
             script_path = os.path.abspath(__file__)
             try:
-                # Use -Command with proper quoting for PowerShell
                 subprocess.Popen(
                     ['powershell', '-NoProfile', '-Command', 
                      f'Start-Process python -ArgumentList "{script_path}" -Verb RunAs'],
@@ -68,13 +59,11 @@ class RobloxCleaner:
                 print("[WARN] Continuing without admin; some steps may fail.")
     
     def print_header(self):
-        """Print welcome header."""
         print(f"\n{Colors.CYAN}=== Roblox Clean Sweep (Python) ==={Colors.RESET}")
         print("Fast, thorough Roblox removal tool")
         print("Removes: processes, folders, registry/prefs, cache, DNS, credentials\n")
     
     def select_mode(self) -> int:
-        """Let user select run mode."""
         print("Select mode:")
         print("  1) Run everything (all [+])")
         print("  2) Configure steps individually")
@@ -85,7 +74,6 @@ class RobloxCleaner:
             print("[ERROR] Invalid choice. Enter 1 or 2.")
     
     def toggle_menu(self):
-        """Interactive toggle menu for step configuration."""
         print(f"\n{Colors.YELLOW}Configure steps (toggle number, A=all [+], S=start):{Colors.RESET}")
         while True:
             self.display_menu()
@@ -105,7 +93,6 @@ class RobloxCleaner:
                 print("[ERROR] Invalid choice.")
     
     def display_menu(self):
-        """Display current step statuses."""
         print("\nConfigure steps (toggle number, A=all [+], S=start):")
         for step_num in range(1, 7):
             name, enabled = self.steps[step_num]
@@ -114,7 +101,6 @@ class RobloxCleaner:
         print("  A) Enable all [+]   S) Start run")
     
     def progress_bar(self, message: str):
-        """Display progress bar."""
         self.done_steps += 1
         pct = (self.done_steps * 100) // self.total_steps
         filled = (self.done_steps * 20) // self.total_steps
@@ -123,7 +109,6 @@ class RobloxCleaner:
         print(f"[{bar}] {pct}% - {message}")
     
     def run_step(self, step_num: int, func):
-        """Run a cleanup step with error handling."""
         name, enabled = self.steps[step_num]
         if enabled:
             try:
@@ -139,7 +124,6 @@ class RobloxCleaner:
             return True
     
     def kill_processes(self) -> bool:
-        """Kill Roblox processes."""
         if self.platform != "win32":
             print("[INFO] Process killing skipped (Windows only)")
             return True
@@ -161,7 +145,6 @@ class RobloxCleaner:
         return True
     
     def delete_folders(self) -> bool:
-        """Delete Roblox folders."""
         if self.platform == "win32":
             folders = [
                 Path(os.environ.get("LOCALAPPDATA", "")) / "Roblox",
@@ -171,7 +154,7 @@ class RobloxCleaner:
                 Path("C:\\ProgramData\\Roblox"),
                 Path(os.environ.get("USERPROFILE", "")) / "AppData\\LocalLow\\Roblox",
             ]
-        else:  # macOS
+        else:
             folders = [
                 Path.home() / "Library/Application Support/Roblox",
                 Path.home() / "Library/Caches/com.roblox.Roblox",
@@ -195,7 +178,6 @@ class RobloxCleaner:
         return True
     
     def cleanup_registry(self) -> bool:
-        """Clean Windows registry."""
         if self.platform != "win32":
             print("[INFO] Registry cleanup skipped (Windows only)")
             return True
@@ -217,7 +199,6 @@ class RobloxCleaner:
         return True
     
     def cleanup_temp(self) -> bool:
-        """Clean temp and cache files."""
         if self.platform == "win32":
             temp_dir = Path(os.environ.get("TEMP", ""))
             roblox_temp = temp_dir / "Roblox"
@@ -231,7 +212,6 @@ class RobloxCleaner:
                 shutil.rmtree(roblox_temp)
                 print(f"  Deleted {roblox_temp}")
             
-            # Clean wildcard patterns
             if self.platform == "win32":
                 subprocess.run(f"del /F /Q \"{temp_dir}\\Roblox*.*\"", shell=True, capture_output=True)
         except Exception as e:
@@ -241,12 +221,11 @@ class RobloxCleaner:
         return True
     
     def flush_dns(self) -> bool:
-        """Flush DNS cache."""
         print("Flushing DNS cache...")
         try:
             if self.platform == "win32":
                 subprocess.run("ipconfig /flushdns", shell=True, capture_output=True, timeout=5)
-            else:  # macOS
+            else:
                 subprocess.run("dscacheutil -flushcache", shell=True, capture_output=True, timeout=5)
                 subprocess.run("sudo killall -HUP mDNSResponder", shell=True, capture_output=True, timeout=5)
             print("  DNS cache flushed.")
@@ -255,7 +234,6 @@ class RobloxCleaner:
         return True
     
     def delete_credentials(self) -> bool:
-        """Delete Windows credentials."""
         if self.platform != "win32":
             print("[INFO] Credential deletion skipped (Windows only)")
             return True
