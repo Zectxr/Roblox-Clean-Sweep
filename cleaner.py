@@ -90,8 +90,8 @@ class RobloxCleaner:
         print("Select mode:")
         print("  1) Run everything")
         print("  2) Configure steps individually")
-        print("  3) About steps (what they do)")
-        print("  4) MAC address tools (Windows)")
+        print("  3) MAC address tools (Windows)")
+        print("  4) About steps (what they do)")
         print("  0) Exit")
         while True:
             choice = input("\nChoose 1, 2, 3, or 4: ").strip()
@@ -99,10 +99,10 @@ class RobloxCleaner:
                 print("[INFO] Exiting.")
                 sys.exit(0)
             if choice == "3":
-                self.show_step_info()
+                self.mac_tools_menu()
                 continue
             if choice == "4":
-                self.mac_tools_menu()
+                self.show_step_info()
                 continue
             if choice in ["1", "2"]:
                 return int(choice)
