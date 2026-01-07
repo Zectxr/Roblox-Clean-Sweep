@@ -89,7 +89,7 @@ class RobloxCleaner:
     
     def select_mode(self) -> int:
         print("Select mode:")
-        print("  1) Run everything")
+        print("  1) Deep Cleaning")
         print("  2) Configure steps individually")
         print("  3) MAC address tools (Windows)")
         print("  4) About steps (what they do)")
@@ -571,13 +571,22 @@ class RobloxCleaner:
                 (
                     "$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\DefaultAccount\\Current';"
                     "if (Test-Path $root) {"
-                    "Get-ChildItem $root -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)roblox|bloxstrap|fishstrap' } |"
-                    " Remove-Item -Recurse -Force -ErrorAction SilentlyContinue;"
-                    " Write-Output 'CloudStore entries removed'; }"
+                    "Get-ChildItem $root -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)roblox|bloxstrap|fishstrap' } | ForEach-Object {"
+                    " try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction Stop;"
+                    "       Write-Output ('DELETED_CLOUD: ' + $_.Name) }"
+                    " catch { Write-Output ('FAILED_CLOUD: ' + $_.Name) } } }"
                 )
             ]
-            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            self.status("  Removed related CloudStore entries (if any).", "ok")
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_CLOUD: "):
+                    deleted += 1
+                    self.status(f"  Deleted CloudStore entry: {line.split(': ',1)[1]}", "ok")
+                elif line.startswith("FAILED_CLOUD: "):
+                    self.status(f"  Could not delete CloudStore entry: {line.split(': ',1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching CloudStore entries found.", "warn")
         except Exception as e:
             self.status(f"  CloudStore cleanup error: {e}", "err")
 
@@ -601,7 +610,15 @@ class RobloxCleaner:
                 self.status(f"  Deleted {roblox_temp}", "ok")
             
             if self.platform == "win32":
-                subprocess.run(f"del /F /Q \"{temp_dir}\\Roblox*.*\"", shell=True, capture_output=True)
+                # Enumerate and delete temp files for common prefixes, printing each
+                for pattern in ["Roblox*.*", "Bloxstrap*.*", "Fishstrap*.*"]:
+                    for f in temp_dir.glob(pattern):
+                        try:
+                            if f.exists() and f.is_file():
+                                f.unlink()
+                                self.status(f"  Deleted temp: {f}", "ok")
+                        except Exception as fe:
+                            self.status(f"  Could not delete temp {f}: {fe}", "err")
                 self.cleanup_prefetch_and_logs()
         except Exception as e:
             self.status(f"  Temp cleanup error: {e}", "err")
@@ -663,20 +680,26 @@ class RobloxCleaner:
     # ---------- Extra cleanup helpers ----------
     def remove_store_package(self):
         cmd = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-AppxPackage -Name ROBLOXCORPORATION* | Remove-AppxPackage"
+            "powershell","-NoProfile","-Command",
+            (
+                "$pkgs = Get-AppxPackage -Name ROBLOXCORPORATION* -ErrorAction SilentlyContinue;"
+                "if ($pkgs) { foreach ($p in $pkgs) {"
+                " try { Remove-AppxPackage -Package $p.PackageFullName -ErrorAction Stop;"
+                "       Write-Output ('DELETED_APPX: ' + $p.PackageFullName) }"
+                " catch { Write-Output ('FAILED_APPX: ' + $p.PackageFullName) } } }"
+            )
         ]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            if res.returncode == 0:
-                if res.stdout.strip():
-                    self.status("  Removed Microsoft Store Roblox package(s).", "ok")
-                else:
-                    self.status("  No Store/UWP Roblox package found.", "warn")
-            else:
-                self.status(f"  Store package removal may have failed: {res.stderr.strip()}", "err")
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_APPX: "):
+                    deleted += 1
+                    self.status(f"  Removed Store package: {line.split(': ',1)[1]}", "ok")
+                elif line.startswith("FAILED_APPX: "):
+                    self.status(f"  Failed to remove Store package: {line.split(': ',1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No Store/UWP Roblox package found.", "warn")
         except Exception as e:
             self.status(f"  Store package removal error: {e}", "err")
 
@@ -691,12 +714,22 @@ class RobloxCleaner:
                 "Get-ChildItem $r -ErrorAction SilentlyContinue | ForEach-Object {"
                 "try { $p = Get-ItemProperty $_.PSPath -ErrorAction Stop;"
                 " if ($p.DisplayName -match '(?i)Roblox|Bloxstrap|Fishstrap') {"
-                " Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue; } } catch {} } } }"
+                "  try { Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop;"
+                "        Write-Output ('DELETED_UNINSTALL: ' + $p.DisplayName) }"
+                "  catch { Write-Output ('FAILED_UNINSTALL: ' + $p.DisplayName) } } } catch {} } }"
             )
         ]
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-            self.status("  Removed matching uninstall entries (if any).", "ok")
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_UNINSTALL: "):
+                    deleted += 1
+                    self.status(f"  Deleted uninstall entry: {line.split(': ',1)[1]}", "ok")
+                elif line.startswith("FAILED_UNINSTALL: "):
+                    self.status(f"  Failed to remove uninstall entry: {line.split(': ',1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching uninstall entries found.", "warn")
         except Exception as e:
             self.status(f"  Uninstall entries cleanup error: {e}", "err")
 
@@ -739,27 +772,50 @@ class RobloxCleaner:
 
     def remove_firewall_rules(self):
         cmd = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-NetFirewallRule | Where-Object { $_.DisplayName -match '(?i)roblox|bloxstrap|fishstrap' } | Remove-NetFirewallRule"
+            "powershell","-NoProfile","-Command",
+            (
+                "Get-NetFirewallRule | Where-Object { $_.DisplayName -match '(?i)roblox|bloxstrap|fishstrap' } | ForEach-Object {"
+                " $n = $_.DisplayName;"
+                " try { $_ | Remove-NetFirewallRule -ErrorAction Stop; Write-Output ('DELETED_FW: ' + $n) }"
+                " catch { Write-Output ('FAILED_FW: ' + $n) } }"
+            )
         ]
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            self.status("  Removed Roblox firewall rules (if any).", "ok")
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_FW: "):
+                    deleted += 1
+                    self.status(f"  Deleted firewall rule: {line.split(': ',1)[1]}", "ok")
+                elif line.startswith("FAILED_FW: "):
+                    self.status(f"  Failed to delete firewall rule: {line.split(': ',1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching firewall rules found.", "warn")
         except Exception as e:
             self.status(f"  Firewall rule cleanup error: {e}", "err")
 
     def remove_scheduled_tasks(self):
         cmd = [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "Get-ScheduledTask | Where-Object { $_.TaskName -match '(?i)roblox|bloxstrap|fishstrap' -or $_.TaskPath -match '(?i)roblox|bloxstrap|fishstrap' } | Unregister-ScheduledTask -Confirm:$false"
+            "powershell","-NoProfile","-Command",
+            (
+                "Get-ScheduledTask | Where-Object { $_.TaskName -match '(?i)roblox|bloxstrap|fishstrap' -or $_.TaskPath -match '(?i)roblox|bloxstrap|fishstrap' } | ForEach-Object {"
+                " $n = $_.TaskName; $p = $_.TaskPath;"
+                " try { Unregister-ScheduledTask -TaskName $n -TaskPath $p -Confirm:$false -ErrorAction Stop;"
+                "       Write-Output ('DELETED_TASK: ' + $p + $n) }"
+                " catch { Write-Output ('FAILED_TASK: ' + $p + $n) } }"
+            )
         ]
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            self.status("  Removed Roblox/Bloxstrap/Fishstrap scheduled tasks (if any).", "ok")
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_TASK: "):
+                    deleted += 1
+                    self.status(f"  Deleted scheduled task: {line.split(': ',1)[1]}", "ok")
+                elif line.startswith("FAILED_TASK: "):
+                    self.status(f"  Failed to delete scheduled task: {line.split(': ',1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching scheduled tasks found.", "warn")
         except Exception as e:
             self.status(f"  Scheduled task cleanup error: {e}", "err")
 
@@ -769,10 +825,20 @@ class RobloxCleaner:
             if not hosts_path.exists():
                 return
             original = hosts_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            filtered = [line for line in original if "roblox" not in line.lower()]
-            if len(filtered) != len(original):
-                hosts_path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
-                self.status("  Removed roblox entries from hosts file.", "ok")
+            removed: List[str] = []
+            kept: List[str] = []
+            for line in original:
+                lower = line.lower()
+                if any(k in lower for k in ["roblox", "bloxstrap", "fishstrap"]):
+                    removed.append(line)
+                else:
+                    kept.append(line)
+            if removed:
+                hosts_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+                for r in removed:
+                    self.status(f"  Removed hosts entry: {r.strip()}", "ok")
+            else:
+                self.status("  No matching hosts entries found.", "warn")
         except Exception as e:
             self.status(f"  Hosts cleanup error: {e}", "err")
     
