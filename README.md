@@ -200,6 +200,14 @@ Issues and PRs welcome—especially for:
 
 ---
 
+## Credits & Sources
+- Windows MAC spoofing approach: registry `NetworkAddress` override and adapter bounce behavior were informed by the community project “Windows-MAC-Address-Spoofer” by Scrut1ny:
+  - https://github.com/Scrut1ny/Windows-MAC-Address-Spoofer
+- Cleanup targets and uninstall surface area cross-checked against “Roblox-Remover” by emlm244 (Windows/macOS paths and behaviors):
+  - https://github.com/emlm244/Roblox-Remover/blob/main/roblox_remover.py
+
+This project does not copy code verbatim; the above resources were used as references to validate approach and coverage.
+
 ## Files Included
 - `cleaner.py` - Python version (cross-platform, recommended)
 - `run.bat` - Windows batch version (no dependencies)
