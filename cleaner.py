@@ -5,8 +5,15 @@ import sys
 import shutil
 import subprocess
 import ctypes
+import json
+import random
+import string
+try:
+    import winreg
+except ImportError:
+    winreg = None
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Optional
 
 class Colors:
     GREEN = '\033[92m'
@@ -59,19 +66,242 @@ class RobloxCleaner:
                 print("[WARN] Continuing without admin; some steps may fail.")
     
     def print_header(self):
-        print(f"\n{Colors.CYAN}=== Roblox Clean Sweep (Python) ==={Colors.RESET}")
-        print("Fast, thorough Roblox removal tool")
-        print("Removes: processes, folders, registry/prefs, cache, DNS, credentials\n")
+        plain_lines = [
+            "Roblox Clean Sweep",
+            "Fast, thorough Roblox removal tool",
+            "[ Processes | Folders | Registry/Prefs | Cache | DNS | Credentials ]",
+        ]
+        width = max(60, max(len(line) for line in plain_lines) + 4)
+        border = f"{Colors.CYAN}{'=' * width}{Colors.RESET}"
+
+        def framed_line(text: str, color: str) -> str:
+            padded = text.ljust(width - 4)
+            return f"{Colors.CYAN}|{Colors.RESET} {color}{padded}{Colors.RESET} {Colors.CYAN}|{Colors.RESET}"
+
+        detail_line = f"{Colors.CYAN}[{Colors.RESET} Processes | Folders | Registry/Prefs | Cache | DNS | Credentials {Colors.CYAN}]{Colors.RESET}"
+
+        print("\n" + border)
+        print(framed_line("Roblox Clean Sweep", Colors.GREEN))
+        print(framed_line("Fast, thorough Roblox removal tool", Colors.YELLOW))
+        print(framed_line("[ Processes | Folders | Registry/Prefs | Cache | DNS | Credentials ]", Colors.CYAN))
+        print(border + "\n")
     
     def select_mode(self) -> int:
         print("Select mode:")
-        print("  1) Run everything (all [+])")
+        print("  1) Run everything")
         print("  2) Configure steps individually")
+        print("  3) About steps (what they do)")
+        print("  4) MAC address tools (Windows)")
+        print("  0) Exit")
         while True:
-            choice = input("\nChoose 1 or 2: ").strip()
+            choice = input("\nChoose 1, 2, 3, or 4: ").strip()
+            if choice == "0":
+                print("[INFO] Exiting.")
+                sys.exit(0)
+            if choice == "3":
+                self.show_step_info()
+                continue
+            if choice == "4":
+                self.mac_tools_menu()
+                continue
             if choice in ["1", "2"]:
                 return int(choice)
-            print("[ERROR] Invalid choice. Enter 1 or 2.")
+            print("[ERROR] Invalid choice. Enter 1, 2, 3, or 4.")
+
+    def show_step_info(self):
+        print(f"\n{Colors.CYAN}What each step does:{Colors.RESET}")
+        info = {
+            1: "Kill any running Roblox executables to avoid file locks.",
+            2: "Remove Roblox install/cache folders and shortcuts.",
+            3: "Delete Roblox registry keys/preferences on Windows.",
+            4: "Clear temp/cache files (Roblox temp data).",
+            5: "Flush DNS and renew IP to reset networking.",
+            6: "Delete saved Windows credentials related to Roblox.",
+        }
+        for idx in range(1, 7):
+            print(f"  {idx}) {self.steps[idx][0]} - {info[idx]}")
+        print("")
+
+    # ---------- MAC address tools (Windows) ----------
+    def mac_tools_menu(self):
+        if self.platform != "win32":
+            print(f"\n{Colors.YELLOW}[INFO]{Colors.RESET} MAC tools are Windows-only.")
+            return
+        if winreg is None:
+            print(f"\n{Colors.YELLOW}[INFO]{Colors.RESET} winreg not available; MAC tools require Windows Python.")
+            return
+        while True:
+            adapters = self.list_adapters()
+            if not adapters:
+                print(f"{Colors.RED}[ERROR]{Colors.RESET} No active adapters found or PowerShell unavailable.")
+                return
+            print(f"\n{Colors.CYAN}Active network adapters (select number):{Colors.RESET}")
+            for idx, adp in enumerate(adapters, start=1):
+                print(f"  {idx}) {adp['Name']} ({adp['MacAddress']})")
+            print("  0) Back")
+            choice = input("Select adapter: ").strip()
+            if choice == "0":
+                return
+            if not choice.isdigit() or int(choice) < 1 or int(choice) > len(adapters):
+                print("[ERROR] Invalid adapter selection.")
+                continue
+            adapter = adapters[int(choice) - 1]
+            self.mac_action_menu(adapter)
+
+    def mac_action_menu(self, adapter: Dict[str, str]):
+        while True:
+            print(f"\n{Colors.CYAN}Adapter:{Colors.RESET} {adapter['Name']}")
+            print(f"  Current MAC: {adapter['MacAddress']}")
+            print("  1) Randomize MAC")
+            print("  2) Set custom MAC")
+            print("  3) Revert to original (remove override)")
+            print("  0) Back")
+            choice = input("Select action: ").strip()
+            if choice == "0":
+                return
+            if choice == "1":
+                new_mac = self.generate_random_mac()
+                self.apply_mac(adapter, new_mac)
+            elif choice == "2":
+                new_mac = self.prompt_custom_mac()
+                if new_mac:
+                    self.apply_mac(adapter, new_mac)
+            elif choice == "3":
+                self.revert_mac(adapter)
+            else:
+                print("[ERROR] Invalid action.")
+            adapter = self.refresh_adapter(adapter)
+
+    def list_adapters(self) -> List[Dict[str, str]]:
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | Select-Object Name,InterfaceDescription,MacAddress,InterfaceGuid | ConvertTo-Json"
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode != 0 or not res.stdout.strip():
+                return []
+            data = json.loads(res.stdout)
+            if isinstance(data, dict):
+                data = [data]
+            adapters = []
+            for item in data:
+                mac = (item.get("MacAddress") or "").strip()
+                name = (item.get("Name") or item.get("InterfaceDescription") or "Unknown").strip()
+                guid = (item.get("InterfaceGuid") or "").strip()
+                adapters.append({
+                    "Name": name,
+                    "MacAddress": mac if mac else "Unknown",
+                    "Guid": guid,
+                })
+            return adapters
+        except Exception:
+            return []
+
+    def refresh_adapter(self, adapter: Dict[str, str]) -> Dict[str, str]:
+        adapters = self.list_adapters()
+        for adp in adapters:
+            if adp.get("Guid") and adapter.get("Guid") and adp["Guid"].lower() == adapter["Guid"].lower():
+                return adp
+            if adp.get("Name") == adapter.get("Name"):
+                return adp
+        return adapter
+
+    def generate_random_mac(self) -> str:
+        first = random.randint(0x00, 0xFF)
+        first |= 0x02  # locally administered
+        first &= 0xFE  # unicast
+        tail = [random.randint(0x00, 0xFF) for _ in range(5)]
+        octets = [first] + tail
+        return "".join(f"{b:02X}" for b in octets)
+
+    def prompt_custom_mac(self) -> Optional[str]:
+        mac = input("Enter 12-digit hex MAC (no colons): ").strip().upper()
+        if len(mac) != 12 or any(c not in string.hexdigits for c in mac):
+            print("[ERROR] Invalid MAC format. Use 12 hex characters (0-9, A-F).")
+            return None
+        return mac
+
+    def find_adapter_reg_key(self, guid: str) -> Optional[str]:
+        if winreg is None:
+            return None
+        base_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_path, 0, winreg.KEY_READ) as base:
+                i = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(base, i)
+                    except OSError:
+                        break
+                    i += 1
+                    full = f"{base_path}\\{sub}"
+                    try:
+                        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, full, 0, winreg.KEY_READ) as sk:
+                            val, _ = winreg.QueryValueEx(sk, "NetCfgInstanceId")
+                            if str(val).lower() == guid.lower():
+                                return full
+                    except FileNotFoundError:
+                        continue
+        except Exception:
+            return None
+        return None
+
+    def apply_mac(self, adapter: Dict[str, str], mac: str):
+        if winreg is None:
+            print("[ERROR] winreg not available; cannot set MAC.")
+            return
+        if not adapter.get("Guid"):
+            print("[ERROR] Cannot locate adapter GUID; aborting.")
+            return
+        reg_path = self.find_adapter_reg_key(adapter["Guid"])
+        if not reg_path:
+            print("[ERROR] Could not locate registry key for adapter.")
+            return
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path, 0, winreg.KEY_SET_VALUE) as sk:
+                winreg.SetValueEx(sk, "NetworkAddress", 0, winreg.REG_SZ, mac)
+            self.disable_enable_adapter(adapter["Name"])
+            print(f"[OK] MAC updated to {mac} for {adapter['Name']}.")
+        except PermissionError:
+            print("[ERROR] Permission denied while writing registry. Run as administrator.")
+        except Exception as e:
+            print(f"[ERROR] Failed to set MAC: {e}")
+
+    def revert_mac(self, adapter: Dict[str, str]):
+        if winreg is None:
+            print("[ERROR] winreg not available; cannot revert MAC.")
+            return
+        if not adapter.get("Guid"):
+            print("[ERROR] Cannot locate adapter GUID; aborting.")
+            return
+        reg_path = self.find_adapter_reg_key(adapter["Guid"])
+        if not reg_path:
+            print("[ERROR] Could not locate registry key for adapter.")
+            return
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path, 0, winreg.KEY_SET_VALUE) as sk:
+                try:
+                    winreg.DeleteValue(sk, "NetworkAddress")
+                except FileNotFoundError:
+                    print("[INFO] No override present; already at original.")
+                    return
+            self.disable_enable_adapter(adapter["Name"])
+            print(f"[OK] MAC override removed for {adapter['Name']}.")
+        except PermissionError:
+            print("[ERROR] Permission denied while modifying registry. Run as administrator.")
+        except Exception as e:
+            print(f"[ERROR] Failed to revert MAC: {e}")
+
+    def disable_enable_adapter(self, name: str):
+        # Disable and re-enable adapter to apply MAC changes.
+        try:
+            subprocess.run(f"netsh interface set interface '{name}' admin=disable", shell=True, capture_output=True, timeout=8)
+            subprocess.run(f"netsh interface set interface '{name}' admin=enable", shell=True, capture_output=True, timeout=8)
+        except Exception as e:
+            print(f"[WARN] Could not bounce adapter: {e}")
     
     def toggle_menu(self):
         print(f"\n{Colors.YELLOW}Configure steps (toggle number, A=all [+], S=start):{Colors.RESET}")
@@ -87,6 +317,9 @@ class RobloxCleaner:
                 for i in range(1, 7):
                     name, _ = self.steps[i]
                     self.steps[i] = (name, True)
+            elif choice == "Q":
+                print("[INFO] Exiting.")
+                sys.exit(0)
             elif choice == "S":
                 break
             else:
@@ -98,7 +331,7 @@ class RobloxCleaner:
             name, enabled = self.steps[step_num]
             status = "+" if enabled else "-"
             print(f"  {step_num}) {name:<35} [{status}]")
-        print("  A) Enable all [+]   S) Start run")
+        print("  A) Enable all [+]   S) Start run   Q) Exit")
     
     def progress_bar(self, message: str):
         self.done_steps += 1
@@ -334,10 +567,7 @@ class RobloxCleaner:
         # Run cleanup
         self.run_cleanup()
         
-        print("Press Ctrl+C to exit...")
-        while True:
-            import time
-            time.sleep(1)
+        input("Press Enter to exit...")
 
 if __name__ == "__main__":
     cleaner = RobloxCleaner()
