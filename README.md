@@ -25,8 +25,12 @@ Fast, toggleable Roblox removal for Windows and macOS. Use this when you need a 
 ### What’s New (latest)
 - Windows Store/UWP Roblox removal using `Get-AppxPackage ... | Remove-AppxPackage`.
 - MAC address tools (Windows): list adapters, randomize/set custom MAC, revert to original.
-- Extra sweep: deletes Roblox shortcuts, prefetch files, crash dumps, and “Recent” items.
-- Network hygiene: removes Roblox-named firewall rules, scheduled tasks, and hosts entries.
+- Extended cleanup to Bloxstrap/Fishstrap: processes, folders (including `%LOCALAPPDATA%`, `%APPDATA%`, `%PROGRAMDATA%`, `%PROGRAMFILES%`, `%PROGRAMFILES(x86)%`, Temp), shortcuts, and registry keys.
+- Uninstall entries cleanup: removes entries with `DisplayName` matching Roblox/Bloxstrap/Fishstrap (HKLM/HKCU, 32/64-bit roots).
+- CloudStore cleanup: removes current-user CloudStore entries containing Roblox/Bloxstrap/Fishstrap.
+- Extra sweep: deletes Roblox shortcuts, prefetch files, crash dumps, “Recent” items, and `%USERPROFILE%\Documents\Roblox*`.
+- Network hygiene: removes firewall rules and scheduled tasks matching Roblox/Bloxstrap/Fishstrap; strips hosts entries containing “roblox”.
+- Robust deletion: handles read-only files to avoid failures during removal.
 - Color-coded output: green = removed, yellow = not found, red = error, cyan = info.
 - Cleaner header banner and clearer exit options.
 
@@ -46,6 +50,7 @@ Fast, toggleable Roblox removal for Windows and macOS. Use this when you need a 
 - [Safety & Notes](#safety--notes)
 - [Contributing](#contributing)
 - [Inspiration](#inspiration)
+ - [Credits & Sources](#credits--sources)
 
 ## Installation
 
@@ -116,13 +121,22 @@ chmod +x cleaner.py
 ---
 
 ## What It Cleans (Windows)
-- **Processes (critical to stop locks)**: `RobloxPlayerBeta.exe`, `RobloxStudioBeta.exe`, `RobloxCrashHandler.exe`, `RobloxInstaller.exe`.
-- **Folders & shortcuts**: `%LOCALAPPDATA%\Roblox`, `%APPDATA%\Roblox`, `%ProgramFiles%\Roblox`, `%ProgramFiles(x86)%\Roblox`, `C:\ProgramData\Roblox`, `%USERPROFILE%\AppData\LocalLow\Roblox`, plus desktop/start-menu/quick-launch shortcuts.
-- **Registry & uninstall entries**: `HKCU/HKLM Software\Roblox`, WOW6432Node keys, uninstall entries, and protocol handlers (`roblox-player`, `roblox-player-1`).
-- **Microsoft Store/UWP package**: removes `ROBLOXCORPORATION*` Appx package if present.
-- **Temp, Prefetch, Crash dumps, Recent**: `%TEMP%\Roblox*`, `C:\Windows\Prefetch\ROBLOX*.pf`, `%LOCALAPPDATA%\CrashDumps\Roblox*.dmp`, and Recent items containing “roblox”.
-- **Network hygiene**: flush DNS; remove Roblox-named firewall rules and scheduled tasks; strip “roblox” lines from the Windows hosts file.
-- **Credentials**: deletes Windows Credential Manager entries that match Roblox.
+- **Processes (stop locks)**: Roblox player/studio/installer/crash handler/launcher; plus tooling and launchers including Bloxstrap/Fishstrap and `RbxFpsUnlocker`.
+- **Folders & shortcuts**:
+  - Roblox: `%LOCALAPPDATA%\Roblox`, `%APPDATA%\Roblox`, `%PROGRAMDATA%\Roblox`, `%ProgramFiles%\Roblox`, `%ProgramFiles(x86)%\Roblox`, `%USERPROFILE%\AppData\LocalLow\Roblox`.
+  - Bloxstrap: matching folders in `%LOCALAPPDATA%`, `%APPDATA%`, `%PROGRAMDATA%`, `%ProgramFiles%`, `%ProgramFiles(x86)%`.
+  - Fishstrap: matching folders in `%LOCALAPPDATA%`, `%APPDATA%`, `%PROGRAMDATA%`, `%ProgramFiles%`, `%ProgramFiles(x86)%`.
+  - Temp & Docs: `%LOCALAPPDATA%\Temp\Roblox|Bloxstrap|Fishstrap`, `%USERPROFILE%\Documents\Roblox*`.
+  - Shortcuts: removes desktop (user and public) and Start Menu entries for Roblox/Bloxstrap/Fishstrap.
+- **Registry & associations**:
+  - `HKCU/HKLM Software\Roblox` and `ROBLOX Corporation`, including WOW6432Node.
+  - Protocol/file handlers: `roblox`, `roblox-player`, `roblox-player-1`, `roblox-studio`, `roblox-studio-auth`; file ext: `.rbxl`, `.rbxlx`; IE `ProtocolExecute` entries.
+  - Bloxstrap/Fishstrap keys and protocol classes.
+- **Uninstall entries**: removes entries with `DisplayName` matching Roblox/Bloxstrap/Fishstrap across HKLM/HKCU (32/64-bit roots).
+- **Microsoft Store/UWP**: removes `ROBLOXCORPORATION*` package if present.
+- **Temp, Prefetch, Crash dumps, Recent**: `%TEMP%\Roblox*`, `C:\Windows\Prefetch\ROBLOX*.pf`, `%LOCALAPPDATA%\CrashDumps\Roblox*.dmp`, Recent entries containing “roblox”.
+- **Network hygiene**: flush DNS; remove firewall rules and scheduled tasks matching Roblox/Bloxstrap/Fishstrap; strip hosts lines containing “roblox”.
+- **Credentials**: deletes Windows Credential Manager entries matching Roblox/Bloxstrap/Fishstrap.
 
 ## What It Cleans (macOS)
 - **Processes**: kills Roblox app and related helpers before removal.
@@ -145,7 +159,7 @@ chmod +x cleaner.py
 
 ### Hosts and Firewall
 - The script removes hosts entries that contain “roblox” (case-insensitive). If you rely on custom host mappings, review before/after.
-- Firewall rules and scheduled tasks with “Roblox” in their name are deleted.
+- Firewall rules and scheduled tasks with names/paths containing Roblox, Bloxstrap, or Fishstrap are deleted.
 
 ## Usage Examples
 
