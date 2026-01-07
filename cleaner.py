@@ -8,6 +8,7 @@ import ctypes
 import json
 import random
 import string
+import stat
 try:
     import winreg
 except ImportError:
@@ -372,10 +373,23 @@ class RobloxCleaner:
             return True
         
         processes = [
+            # Roblox
             "RobloxPlayerBeta.exe",
+            "RobloxPlayer.exe",
             "RobloxStudioBeta.exe",
+            "RobloxStudio.exe",
             "RobloxCrashHandler.exe",
             "RobloxInstaller.exe",
+            "RobloxPlayerLauncher.exe",
+            # Tools
+            "RbxFpsUnlocker.exe",
+            # Bloxstrap
+            "Bloxstrap.exe",
+            "BloxstrapBootstrapper.exe",
+            "BloxstrapRPC.exe",
+            # Fishstrap
+            "Fishstrap.exe",
+            "FishstrapBootstrapper.exe",
         ]
         
         print("Killing Roblox processes...")
@@ -387,23 +401,72 @@ class RobloxCleaner:
         print("  Done (some processes may not exist).")
         return True
     
+    def _on_rm_error(self, func, path, exc_info):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _delete_path(self, path: Path):
+        try:
+            if path.is_file() or path.is_symlink():
+                try:
+                    os.chmod(path, stat.S_IWRITE)
+                except Exception:
+                    pass
+                try:
+                    path.unlink(missing_ok=True)
+                except TypeError:
+                    if path.exists():
+                        path.unlink()
+            elif path.exists():
+                shutil.rmtree(path, onerror=self._on_rm_error)
+            self.status(f"  Deleted {path}", "ok")
+        except Exception as e:
+            self.status(f"  Could not delete {path}: {e}", "err")
+
     def delete_folders(self) -> bool:
         if self.platform == "win32":
-            folders = [
-                Path(os.environ.get("LOCALAPPDATA", "")) / "Roblox",
-                Path(os.environ.get("APPDATA", "")) / "Roblox",
-                Path(os.environ.get("ProgramFiles", "")) / "Roblox",
-                Path(os.environ.get("ProgramFiles(x86)", "")) / "Roblox",
+            env = os.environ
+            folders_exact = [
+                Path(env.get("LOCALAPPDATA", "")) / "Roblox",
+                Path(env.get("APPDATA", "")) / "Roblox",
+                Path(env.get("ProgramFiles", "")) / "Roblox",
+                Path(env.get("ProgramFiles(x86)", "")) / "Roblox",
                 Path("C:\\ProgramData\\Roblox"),
-                Path(os.environ.get("USERPROFILE", "")) / "AppData\\LocalLow\\Roblox",
+                Path(env.get("USERPROFILE", "")) / "AppData\\LocalLow\\Roblox",
+                # Bloxstrap
+                Path(env.get("LOCALAPPDATA", "")) / "Bloxstrap",
+                Path(env.get("APPDATA", "")) / "Bloxstrap",
+                Path(env.get("ProgramData", "")) / "Bloxstrap",
+                Path(env.get("ProgramFiles", "")) / "Bloxstrap",
+                Path(env.get("ProgramFiles(x86)", "")) / "Bloxstrap",
+                # Fishstrap
+                Path(env.get("LOCALAPPDATA", "")) / "Fishstrap",
+                Path(env.get("APPDATA", "")) / "Fishstrap",
+                Path(env.get("ProgramData", "")) / "Fishstrap",
+                Path(env.get("ProgramFiles", "")) / "Fishstrap",
+                Path(env.get("ProgramFiles(x86)", "")) / "Fishstrap",
+            ]
+            folders_patterns = [
+                str(Path(env.get("LOCALAPPDATA", "")) / "Temp" / "Roblox"),
+                str(Path(env.get("LOCALAPPDATA", "")) / "Temp" / "Bloxstrap"),
+                str(Path(env.get("LOCALAPPDATA", "")) / "Temp" / "Fishstrap"),
+                str(Path(env.get("LOCALAPPDATA", "")) / "Packages" / "ROBLOXCORPORATION.ROBLOX*"),
+                str(Path(env.get("USERPROFILE", "")) / "Documents" / "Roblox*"),
             ]
             
             shortcut_locations = [
-                Path(os.environ.get("USERPROFILE", "")) / "Desktop",
-                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
-                Path(os.environ.get("ProgramData", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
-                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Internet Explorer\\Quick Launch",
-                Path(os.environ.get("APPDATA", "")) / "Microsoft\\Windows\\Recent",
+                Path(env.get("USERPROFILE", "")) / "Desktop",
+                Path(env.get("PUBLIC", "C:/Users/Public")) / "Desktop",
+                Path(env.get("APPDATA", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
+                Path(env.get("ProgramData", "")) / "Microsoft\\Windows\\Start Menu\\Programs",
+                Path(env.get("APPDATA", "")) / "Microsoft\\Internet Explorer\\Quick Launch",
+                Path(env.get("APPDATA", "")) / "Microsoft\\Windows\\Recent",
             ]
         else:
             folders = [
@@ -416,23 +479,25 @@ class RobloxCleaner:
             shortcut_locations = []
         
         print("Deleting leftover folders...")
-        for folder in folders:
-            if folder.exists():
-                try:
-                    if folder.is_file():
-                        folder.unlink()
-                    else:
-                        shutil.rmtree(folder)
-                    self.status(f"  Deleted {folder}", "ok")
-                except Exception as e:
-                    self.status(f"  Could not delete {folder}: {e}", "err")
+        if self.platform == "win32":
+            for folder in folders_exact:
+                if folder.exists():
+                    self._delete_path(folder)
+            import glob
+            for pattern in folders_patterns:
+                for p in glob.glob(pattern):
+                    self._delete_path(Path(p))
+        else:
+            for folder in folders:
+                if folder.exists():
+                    self._delete_path(folder)
         
         if self.platform == "win32":
             print("Deleting shortcuts and icons...")
             for location in shortcut_locations:
                 if location.exists():
                     try:
-                        for shortcut in location.rglob("*roblox*.lnk"):
+                        for shortcut in list(location.rglob("*roblox*.lnk")) + list(location.rglob("*bloxstrap*.lnk")) + list(location.rglob("*fishstrap*.lnk")):
                             try:
                                 shortcut.unlink()
                                 self.status(f"  Deleted shortcut: {shortcut.name}", "ok")
@@ -453,14 +518,40 @@ class RobloxCleaner:
         
         print("Removing registry entries...")
         reg_paths = [
+            # Roblox
             r"HKCU\Software\Roblox",
+            r"HKCU\Software\ROBLOX Corporation",
             r"HKLM\Software\Roblox",
+            r"HKLM\Software\ROBLOX Corporation",
             r"HKLM\Software\WOW6432Node\Roblox",
-            r"HKCU\Software\Roblox Corporation",
+            r"HKLM\Software\WOW6432Node\ROBLOX Corporation",
             r"HKCU\Software\Classes\roblox-player",
             r"HKCU\Software\Classes\roblox-player-1",
+            r"HKCU\Software\Classes\roblox",
+            r"HKCU\Software\Classes\roblox-studio",
+            r"HKCU\Software\Classes\roblox-studio-auth",
             r"HKLM\Software\Classes\roblox-player",
             r"HKLM\Software\Classes\roblox-player-1",
+            r"HKLM\Software\Classes\roblox",
+            r"HKLM\Software\Classes\roblox-studio",
+            r"HKLM\Software\Classes\roblox-studio-auth",
+            r"HKCU\Software\Microsoft\Internet Explorer\ProtocolExecute\roblox-studio",
+            r"HKCU\Software\Microsoft\Internet Explorer\ProtocolExecute\roblox-studio-auth",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.rbxl",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.rbxlx",
+            # Bloxstrap
+            r"HKCU\Software\Bloxstrap",
+            r"HKLM\Software\Bloxstrap",
+            r"HKLM\Software\WOW6432Node\Bloxstrap",
+            r"HKCU\Software\Classes\bloxstrap",
+            r"HKLM\Software\Classes\bloxstrap",
+            # Fishstrap
+            r"HKCU\Software\Fishstrap",
+            r"HKLM\Software\Fishstrap",
+            r"HKLM\Software\WOW6432Node\Fishstrap",
+            r"HKCU\Software\Classes\fishstrap",
+            r"HKLM\Software\Classes\fishstrap",
+            # Legacy uninstall entries (direct paths if present)
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox",
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox Player",
             r"HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox",
@@ -473,6 +564,25 @@ class RobloxCleaner:
                 self.status(f"  Deleted {path}", "ok")
             except Exception as e:
                 self.status(f"  Could not delete {path}: {e}", "err")
+        # CloudStore entries via PowerShell (names containing roblox/bloxstrap/fishstrap)
+        try:
+            cmd = [
+                "powershell","-NoProfile","-Command",
+                (
+                    "$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\DefaultAccount\\Current';"
+                    "if (Test-Path $root) {"
+                    "Get-ChildItem $root -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)roblox|bloxstrap|fishstrap' } |"
+                    " Remove-Item -Recurse -Force -ErrorAction SilentlyContinue;"
+                    " Write-Output 'CloudStore entries removed'; }"
+                )
+            ]
+            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            self.status("  Removed related CloudStore entries (if any).", "ok")
+        except Exception as e:
+            self.status(f"  CloudStore cleanup error: {e}", "err")
+
+        # Uninstall entries with matching DisplayName
+        self.remove_uninstall_entries()
         print("  Registry cleanup complete.")
         return True
     
@@ -532,7 +642,7 @@ class RobloxCleaner:
             removed_count = 0
             
             for line in lines:
-                if 'Target:' in line and 'roblox' in line.lower():
+                if 'Target:' in line and any(x in line.lower() for x in ['roblox','bloxstrap','fishstrap']):
                     target = line.split('Target:')[1].strip().split()[0] if 'Target:' in line else None
                     if target:
                         try:
@@ -569,6 +679,26 @@ class RobloxCleaner:
                 self.status(f"  Store package removal may have failed: {res.stderr.strip()}", "err")
         except Exception as e:
             self.status(f"  Store package removal error: {e}", "err")
+
+    def remove_uninstall_entries(self):
+        cmd = [
+            "powershell","-NoProfile","-Command",
+            (
+                "$roots = @('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',"
+                "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',"
+                "'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall');"
+                "foreach ($r in $roots) { if (Test-Path $r) {"
+                "Get-ChildItem $r -ErrorAction SilentlyContinue | ForEach-Object {"
+                "try { $p = Get-ItemProperty $_.PSPath -ErrorAction Stop;"
+                " if ($p.DisplayName -match '(?i)Roblox|Bloxstrap|Fishstrap') {"
+                " Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue; } } catch {} } } }"
+            )
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            self.status("  Removed matching uninstall entries (if any).", "ok")
+        except Exception as e:
+            self.status(f"  Uninstall entries cleanup error: {e}", "err")
 
     def cleanup_prefetch_and_logs(self):
         try:
@@ -612,7 +742,7 @@ class RobloxCleaner:
             "powershell",
             "-NoProfile",
             "-Command",
-            "Get-NetFirewallRule | Where-Object { $_.DisplayName -like '*Roblox*' } | Remove-NetFirewallRule"
+            "Get-NetFirewallRule | Where-Object { $_.DisplayName -match '(?i)roblox|bloxstrap|fishstrap' } | Remove-NetFirewallRule"
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -625,11 +755,11 @@ class RobloxCleaner:
             "powershell",
             "-NoProfile",
             "-Command",
-            "Get-ScheduledTask | Where-Object { $_.TaskName -like '*Roblox*' } | Unregister-ScheduledTask -Confirm:$false"
+            "Get-ScheduledTask | Where-Object { $_.TaskName -match '(?i)roblox|bloxstrap|fishstrap' -or $_.TaskPath -match '(?i)roblox|bloxstrap|fishstrap' } | Unregister-ScheduledTask -Confirm:$false"
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            self.status("  Removed Roblox scheduled tasks (if any).", "ok")
+            self.status("  Removed Roblox/Bloxstrap/Fishstrap scheduled tasks (if any).", "ok")
         except Exception as e:
             self.status(f"  Scheduled task cleanup error: {e}", "err")
 
