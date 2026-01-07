@@ -122,6 +122,16 @@ class RobloxCleaner:
             print(f"  {idx}) {self.steps[idx][0]} - {info[idx]}")
         print("")
 
+    def status(self, message: str, level: str = "info"):
+        colors = {
+            "ok": Colors.GREEN,
+            "warn": Colors.YELLOW,
+            "err": Colors.RED,
+            "info": Colors.CYAN,
+        }
+        color = colors.get(level, Colors.CYAN)
+        print(f"{color}{message}{Colors.RESET}")
+
     # ---------- MAC address tools (Windows) ----------
     def mac_tools_menu(self):
         if self.platform != "win32":
@@ -413,9 +423,9 @@ class RobloxCleaner:
                         folder.unlink()
                     else:
                         shutil.rmtree(folder)
-                    print(f"  Deleted {folder}")
+                    self.status(f"  Deleted {folder}", "ok")
                 except Exception as e:
-                    print(f"  [WARN] Could not delete {folder}: {e}")
+                    self.status(f"  Could not delete {folder}: {e}", "err")
         
         if self.platform == "win32":
             print("Deleting shortcuts and icons...")
@@ -425,11 +435,11 @@ class RobloxCleaner:
                         for shortcut in location.rglob("*roblox*.lnk"):
                             try:
                                 shortcut.unlink()
-                                print(f"  Deleted shortcut: {shortcut.name}")
+                                self.status(f"  Deleted shortcut: {shortcut.name}", "ok")
                             except Exception as e:
-                                print(f"  [WARN] Could not delete {shortcut}: {e}")
+                                self.status(f"  Could not delete {shortcut}: {e}", "err")
                     except Exception as e:
-                        print(f"  [WARN] Error scanning {location}: {e}")
+                        self.status(f"  Error scanning {location}: {e}", "err")
             # Remove Microsoft Store/UWP Roblox package if installed
             self.remove_store_package()
         
@@ -460,9 +470,9 @@ class RobloxCleaner:
         for path in reg_paths:
             try:
                 subprocess.run(f"reg delete \"{path}\" /f", shell=True, capture_output=True, timeout=5)
-                print(f"  Deleted {path}")
+                self.status(f"  Deleted {path}", "ok")
             except Exception as e:
-                print(f"  [WARN] Could not delete {path}: {e}")
+                self.status(f"  Could not delete {path}: {e}", "err")
         print("  Registry cleanup complete.")
         return True
     
@@ -478,13 +488,13 @@ class RobloxCleaner:
         try:
             if roblox_temp.exists():
                 shutil.rmtree(roblox_temp)
-                print(f"  Deleted {roblox_temp}")
+                self.status(f"  Deleted {roblox_temp}", "ok")
             
             if self.platform == "win32":
                 subprocess.run(f"del /F /Q \"{temp_dir}\\Roblox*.*\"", shell=True, capture_output=True)
                 self.cleanup_prefetch_and_logs()
         except Exception as e:
-            print(f"  [WARN] Temp cleanup error: {e}")
+            self.status(f"  Temp cleanup error: {e}", "err")
         
         print("  Temp cleanup complete.")
         return True
@@ -527,15 +537,15 @@ class RobloxCleaner:
                     if target:
                         try:
                             subprocess.run(f"cmdkey /delete:\"{target}\"", shell=True, capture_output=True, timeout=5)
-                            print(f"  Removed credential: {target}")
+                            self.status(f"  Removed credential: {target}", "ok")
                             removed_count += 1
                         except Exception as e:
-                            print(f"  [WARN] Could not delete credential {target}: {e}")
+                            self.status(f"  Could not delete credential {target}: {e}", "err")
             
             if removed_count == 0:
-                print("  No Roblox credentials found.")
+                self.status("  No Roblox credentials found.", "warn")
         except Exception as e:
-            print(f"  [WARN] Credential deletion error: {e}")
+            self.status(f"  Credential deletion error: {e}", "err")
         
         print("  Credentials cleanup complete.")
         return True
@@ -552,13 +562,13 @@ class RobloxCleaner:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             if res.returncode == 0:
                 if res.stdout.strip():
-                    print("  Removed Microsoft Store Roblox package(s).")
+                    self.status("  Removed Microsoft Store Roblox package(s).", "ok")
                 else:
-                    print("  No Store/UWP Roblox package found.")
+                    self.status("  No Store/UWP Roblox package found.", "warn")
             else:
-                print(f"  [WARN] Store package removal may have failed: {res.stderr.strip()}")
+                self.status(f"  Store package removal may have failed: {res.stderr.strip()}", "err")
         except Exception as e:
-            print(f"  [WARN] Store package removal error: {e}")
+            self.status(f"  Store package removal error: {e}", "err")
 
     def cleanup_prefetch_and_logs(self):
         try:
@@ -567,9 +577,9 @@ class RobloxCleaner:
                 for pf in prefetch_dir.glob("ROBLOX*.pf"):
                     try:
                         pf.unlink()
-                        print(f"  Deleted prefetch: {pf.name}")
+                        self.status(f"  Deleted prefetch: {pf.name}", "ok")
                     except Exception as e:
-                        print(f"  [WARN] Could not delete prefetch {pf}: {e}")
+                        self.status(f"  Could not delete prefetch {pf}: {e}", "err")
         except Exception:
             pass
 
@@ -579,9 +589,9 @@ class RobloxCleaner:
                 for dump in crash_dir.glob("Roblox*.dmp"):
                     try:
                         dump.unlink()
-                        print(f"  Deleted crash dump: {dump.name}")
+                        self.status(f"  Deleted crash dump: {dump.name}", "ok")
                     except Exception as e:
-                        print(f"  [WARN] Could not delete crash dump {dump}: {e}")
+                        self.status(f"  Could not delete crash dump {dump}: {e}", "err")
         except Exception:
             pass
 
@@ -591,7 +601,7 @@ class RobloxCleaner:
                 for item in recent_dir.glob("*roblox*.*"):
                     try:
                         item.unlink()
-                        # Silent; avoid noisy output for many items
+                        self.status(f"  Deleted recent item: {item.name}", "ok")
                     except Exception:
                         pass
         except Exception:
@@ -606,9 +616,9 @@ class RobloxCleaner:
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            print("  Removed Roblox firewall rules (if any).")
+            self.status("  Removed Roblox firewall rules (if any).", "ok")
         except Exception as e:
-            print(f"  [WARN] Firewall rule cleanup error: {e}")
+            self.status(f"  Firewall rule cleanup error: {e}", "err")
 
     def remove_scheduled_tasks(self):
         cmd = [
@@ -619,9 +629,9 @@ class RobloxCleaner:
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            print("  Removed Roblox scheduled tasks (if any).")
+            self.status("  Removed Roblox scheduled tasks (if any).", "ok")
         except Exception as e:
-            print(f"  [WARN] Scheduled task cleanup error: {e}")
+            self.status(f"  Scheduled task cleanup error: {e}", "err")
 
     def cleanup_hosts_file(self):
         hosts_path = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/drivers/etc/hosts"
@@ -632,9 +642,9 @@ class RobloxCleaner:
             filtered = [line for line in original if "roblox" not in line.lower()]
             if len(filtered) != len(original):
                 hosts_path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
-                print("  Removed roblox entries from hosts file.")
+                self.status("  Removed roblox entries from hosts file.", "ok")
         except Exception as e:
-            print(f"  [WARN] Hosts cleanup error: {e}")
+            self.status(f"  Hosts cleanup error: {e}", "err")
     
     def run_cleanup(self):
         """Execute all enabled cleanup steps."""
