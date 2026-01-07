@@ -112,10 +112,10 @@ class RobloxCleaner:
         print(f"\n{Colors.CYAN}What each step does:{Colors.RESET}")
         info = {
             1: "Kill any running Roblox executables to avoid file locks.",
-            2: "Remove Roblox install/cache folders and shortcuts.",
-            3: "Delete Roblox registry keys/preferences on Windows.",
-            4: "Clear temp/cache files (Roblox temp data).",
-            5: "Flush DNS and renew IP to reset networking.",
+            2: "Remove installs, cache, shortcuts, and Store/UWP package.",
+            3: "Delete Roblox registry keys, uninstall entries, protocol handlers.",
+            4: "Clear temp/cache, prefetch, crash dumps, recent items.",
+            5: "Reset networking, flush DNS, clean firewall rules, hosts, tasks.",
             6: "Delete saved Windows credentials related to Roblox.",
         }
         for idx in range(1, 7):
@@ -430,6 +430,8 @@ class RobloxCleaner:
                                 print(f"  [WARN] Could not delete {shortcut}: {e}")
                     except Exception as e:
                         print(f"  [WARN] Error scanning {location}: {e}")
+            # Remove Microsoft Store/UWP Roblox package if installed
+            self.remove_store_package()
         
         print("  Folder cleanup complete.")
         return True
@@ -444,6 +446,15 @@ class RobloxCleaner:
             r"HKCU\Software\Roblox",
             r"HKLM\Software\Roblox",
             r"HKLM\Software\WOW6432Node\Roblox",
+            r"HKCU\Software\Roblox Corporation",
+            r"HKCU\Software\Classes\roblox-player",
+            r"HKCU\Software\Classes\roblox-player-1",
+            r"HKLM\Software\Classes\roblox-player",
+            r"HKLM\Software\Classes\roblox-player-1",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox Player",
+            r"HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox",
+            r"HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Roblox Player",
         ]
         
         for path in reg_paths:
@@ -471,6 +482,7 @@ class RobloxCleaner:
             
             if self.platform == "win32":
                 subprocess.run(f"del /F /Q \"{temp_dir}\\Roblox*.*\"", shell=True, capture_output=True)
+                self.cleanup_prefetch_and_logs()
         except Exception as e:
             print(f"  [WARN] Temp cleanup error: {e}")
         
@@ -487,6 +499,9 @@ class RobloxCleaner:
                 print("  IP renewed.")
                 subprocess.run("ipconfig /flushdns", shell=True, capture_output=True, timeout=5)
                 print("  DNS cache flushed.")
+                self.remove_firewall_rules()
+                self.remove_scheduled_tasks()
+                self.cleanup_hosts_file()
             else:
                 subprocess.run("dscacheutil -flushcache", shell=True, capture_output=True, timeout=5)
                 subprocess.run("sudo killall -HUP mDNSResponder", shell=True, capture_output=True, timeout=5)
@@ -524,6 +539,102 @@ class RobloxCleaner:
         
         print("  Credentials cleanup complete.")
         return True
+
+    # ---------- Extra cleanup helpers ----------
+    def remove_store_package(self):
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-AppxPackage -Name ROBLOXCORPORATION* | Remove-AppxPackage"
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if res.returncode == 0:
+                if res.stdout.strip():
+                    print("  Removed Microsoft Store Roblox package(s).")
+                else:
+                    print("  No Store/UWP Roblox package found.")
+            else:
+                print(f"  [WARN] Store package removal may have failed: {res.stderr.strip()}")
+        except Exception as e:
+            print(f"  [WARN] Store package removal error: {e}")
+
+    def cleanup_prefetch_and_logs(self):
+        try:
+            prefetch_dir = Path("C:/Windows/Prefetch")
+            if prefetch_dir.exists():
+                for pf in prefetch_dir.glob("ROBLOX*.pf"):
+                    try:
+                        pf.unlink()
+                        print(f"  Deleted prefetch: {pf.name}")
+                    except Exception as e:
+                        print(f"  [WARN] Could not delete prefetch {pf}: {e}")
+        except Exception:
+            pass
+
+        try:
+            crash_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "CrashDumps"
+            if crash_dir.exists():
+                for dump in crash_dir.glob("Roblox*.dmp"):
+                    try:
+                        dump.unlink()
+                        print(f"  Deleted crash dump: {dump.name}")
+                    except Exception as e:
+                        print(f"  [WARN] Could not delete crash dump {dump}: {e}")
+        except Exception:
+            pass
+
+        try:
+            recent_dir = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Recent"
+            if recent_dir.exists():
+                for item in recent_dir.glob("*roblox*.*"):
+                    try:
+                        item.unlink()
+                        # Silent; avoid noisy output for many items
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def remove_firewall_rules(self):
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-NetFirewallRule | Where-Object { $_.DisplayName -like '*Roblox*' } | Remove-NetFirewallRule"
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            print("  Removed Roblox firewall rules (if any).")
+        except Exception as e:
+            print(f"  [WARN] Firewall rule cleanup error: {e}")
+
+    def remove_scheduled_tasks(self):
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-ScheduledTask | Where-Object { $_.TaskName -like '*Roblox*' } | Unregister-ScheduledTask -Confirm:$false"
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            print("  Removed Roblox scheduled tasks (if any).")
+        except Exception as e:
+            print(f"  [WARN] Scheduled task cleanup error: {e}")
+
+    def cleanup_hosts_file(self):
+        hosts_path = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/drivers/etc/hosts"
+        try:
+            if not hosts_path.exists():
+                return
+            original = hosts_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            filtered = [line for line in original if "roblox" not in line.lower()]
+            if len(filtered) != len(original):
+                hosts_path.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+                print("  Removed roblox entries from hosts file.")
+        except Exception as e:
+            print(f"  [WARN] Hosts cleanup error: {e}")
     
     def run_cleanup(self):
         """Execute all enabled cleanup steps."""
