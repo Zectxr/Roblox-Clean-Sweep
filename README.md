@@ -22,8 +22,17 @@ Fast, toggleable Roblox removal for Windows and macOS. Use this when you need a 
 - **Single-pass flow**: one run takes you from detection to cleanup, then restart.
 - **Forensic-friendly**: documents exactly what is removed for auditability.
 
+### What’s New (latest)
+- Windows Store/UWP Roblox removal using `Get-AppxPackage ... | Remove-AppxPackage`.
+- MAC address tools (Windows): list adapters, randomize/set custom MAC, revert to original.
+- Extra sweep: deletes Roblox shortcuts, prefetch files, crash dumps, and “Recent” items.
+- Network hygiene: removes Roblox-named firewall rules, scheduled tasks, and hosts entries.
+- Color-coded output: green = removed, yellow = not found, red = error, cyan = info.
+- Cleaner header banner and clearer exit options.
+
 ## Feature Snapshot
 - Interactive toggle menu with user-controlled steps.
+- Windows-only MAC tools (PowerShell + registry) to spoof/revert adapter MACs.
 - Mirrors best-practice locations on macOS (user and system scopes).
 - Targets credentials (Windows) and DNS cache hygiene on both platforms.
 - Designed for reinstall prep, account switching, or remediation after issues.
@@ -95,8 +104,11 @@ chmod +x cleaner.py
 
 1. **Right-click** `run.bat` → **Run as administrator**
 2. **Select mode**: 
-   - `1` = Run everything (all [+])
-   - `2` = Configure steps individually
+  - `1` = Run everything (all [+])
+  - `2` = Configure steps individually
+  - `3` = MAC address tools (Windows)
+  - `4` = About steps (what they do)
+  - `0` = Exit
 3. **Answer toggles** (if mode 2): enter number to toggle `[+]/[-]` status
 4. **Review** and confirm cleanup
 5. **Restart** your PC before reinstalling Roblox
@@ -105,11 +117,12 @@ chmod +x cleaner.py
 
 ## What It Cleans (Windows)
 - **Processes (critical to stop locks)**: `RobloxPlayerBeta.exe`, `RobloxStudioBeta.exe`, `RobloxCrashHandler.exe`, `RobloxInstaller.exe`.
-- **All known folders (no leftovers)**: `%LOCALAPPDATA%`, `%APPDATA%`, `%ProgramFiles%`, `%ProgramFiles(x86)%`, `C:\ProgramData`, `AppData\LocalLow`.
-- **Registry footprints (full sweep)**: `HKCU/HKLM Software\Roblox`, WOW6432Node entries.
-- **Temp and cache (noise-free)**: `%TEMP%\Roblox*` and `%TEMP%\Roblox` folder.
-- **Network hygiene**: DNS cache flush (`ipconfig /flushdns`).
-- **Account hygiene (optional)**: Roblox-related credentials removed via `cmdkey`.
+- **Folders & shortcuts**: `%LOCALAPPDATA%\Roblox`, `%APPDATA%\Roblox`, `%ProgramFiles%\Roblox`, `%ProgramFiles(x86)%\Roblox`, `C:\ProgramData\Roblox`, `%USERPROFILE%\AppData\LocalLow\Roblox`, plus desktop/start-menu/quick-launch shortcuts.
+- **Registry & uninstall entries**: `HKCU/HKLM Software\Roblox`, WOW6432Node keys, uninstall entries, and protocol handlers (`roblox-player`, `roblox-player-1`).
+- **Microsoft Store/UWP package**: removes `ROBLOXCORPORATION*` Appx package if present.
+- **Temp, Prefetch, Crash dumps, Recent**: `%TEMP%\Roblox*`, `C:\Windows\Prefetch\ROBLOX*.pf`, `%LOCALAPPDATA%\CrashDumps\Roblox*.dmp`, and Recent items containing “roblox”.
+- **Network hygiene**: flush DNS; remove Roblox-named firewall rules and scheduled tasks; strip “roblox” lines from the Windows hosts file.
+- **Credentials**: deletes Windows Credential Manager entries that match Roblox.
 
 ## What It Cleans (macOS)
 - **Processes**: kills Roblox app and related helpers before removal.
@@ -124,6 +137,15 @@ chmod +x cleaner.py
 - Restart after the script completes.
 - Scripts are text-based; review before running if you need to audit.
 - Both Python and Batch versions will show warnings for skipped/failed operations and continue instead of crashing.
+
+### MAC Tools Safety
+- MAC spoofing is Windows-only and requires admin. Some NIC drivers/brands may ignore `NetworkAddress` overrides or reset them after updates.
+- Connectivity can briefly drop while the adapter is disabled/enabled to apply the change.
+- You can revert any override via the MAC tools menu (option “Revert to original”).
+
+### Hosts and Firewall
+- The script removes hosts entries that contain “roblox” (case-insensitive). If you rely on custom host mappings, review before/after.
+- Firewall rules and scheduled tasks with “Roblox” in their name are deleted.
 
 ## Usage Examples
 
@@ -147,6 +169,22 @@ python3 cleaner.py
 # Select: 2
 # Toggle steps as needed (A for all, S to start)
 ```
+
+### Windows - MAC Address Tools
+```powershell
+python cleaner.py
+# Select: 3 (MAC address tools)
+# Pick adapter → choose:
+#  1) Randomize MAC
+#  2) Set custom MAC (12 hex chars, no colons)
+#  3) Revert to original
+```
+
+Color legend in output:
+- Green = removed/updated successfully
+- Yellow = item not found (already clean)
+- Red = error (operation failed)
+- Cyan = informational
 
 ## Contributing
 Issues and PRs welcome—especially for:
