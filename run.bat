@@ -1,2 +1,2 @@
 @echo off
-python cleaner.py %*
+py cleaner.py %*
