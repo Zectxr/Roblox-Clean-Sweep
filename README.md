@@ -23,6 +23,11 @@ Fast, toggleable Roblox removal for Windows and macOS. Use this when you need a 
 - **Forensic-friendly**: documents exactly what is removed for auditability.
 
 ### What’s New (latest)
+- MUICache cleanup: removes matching Roblox/Bloxstrap/Fishstrap values from common per-user MUICache locations.
+- UserAssist cleanup: decodes ROT13 UserAssist entries and removes matching launch-history values.
+- Jump list cleanup: scans Automatic/Custom Destinations and deletes files containing Roblox/Bloxstrap/Fishstrap traces.
+- Event log filtering: scans common logs for Roblox/Bloxstrap/Fishstrap references and clears logs when matches are found.
+- Amcache/ShimCache awareness: removes practical AppCompat traces and reports ShimCache presence/limitations.
 - Windows Store/UWP Roblox removal using `Get-AppxPackage ... | Remove-AppxPackage`.
 - MAC address tools (Windows): list adapters, randomize/set custom MAC, revert to original.
 - Extended cleanup to Bloxstrap/Fishstrap: processes, folders (including `%LOCALAPPDATA%`, `%APPDATA%`, `%PROGRAMDATA%`, `%PROGRAMFILES%`, `%PROGRAMFILES(x86)%`, Temp), shortcuts, and registry keys.
@@ -132,10 +137,12 @@ chmod +x cleaner.py
   - `HKCU/HKLM Software\Roblox` and `ROBLOX Corporation`, including WOW6432Node.
   - Protocol/file handlers: `roblox`, `roblox-player`, `roblox-player-1`, `roblox-studio`, `roblox-studio-auth`; file ext: `.rbxl`, `.rbxlx`; IE `ProtocolExecute` entries.
   - Bloxstrap/Fishstrap keys and protocol classes.
+  - Artifact cleanup: MUICache values, UserAssist launch-history values (ROT13-decoded), and AppCompat trace values where safe.
 - **Uninstall entries**: removes entries with `DisplayName` matching Roblox/Bloxstrap/Fishstrap across HKLM/HKCU (32/64-bit roots).
 - **Microsoft Store/UWP**: removes `ROBLOXCORPORATION*` package if present.
-- **Temp, Prefetch, Crash dumps, Recent**: `%TEMP%\Roblox*`, `C:\Windows\Prefetch\ROBLOX*.pf`, `%LOCALAPPDATA%\CrashDumps\Roblox*.dmp`, Recent entries containing “roblox”.
+- **Temp, Prefetch, Crash dumps, Recent, Jump Lists**: `%TEMP%\Roblox*`, `C:\Windows\Prefetch\ROBLOX*.pf`, `%LOCALAPPDATA%\CrashDumps\Roblox*.dmp`, Recent entries containing “roblox”, and matching jump list files in `AutomaticDestinations`/`CustomDestinations`.
 - **Network hygiene**: flush DNS; remove firewall rules and scheduled tasks matching Roblox/Bloxstrap/Fishstrap; strip hosts lines containing “roblox”.
+- **Event logs**: scans selected logs for Roblox/Bloxstrap/Fishstrap references and clears logs with matches.
 - **Credentials**: deletes Windows Credential Manager entries matching Roblox/Bloxstrap/Fishstrap.
 
 ## What It Cleans (macOS)
@@ -160,6 +167,10 @@ chmod +x cleaner.py
 ### Hosts and Firewall
 - The script removes hosts entries that contain “roblox” (case-insensitive). If you rely on custom host mappings, review before/after.
 - Firewall rules and scheduled tasks with names/paths containing Roblox, Bloxstrap, or Fishstrap are deleted.
+
+### Event Logs and AppCompat Artifacts
+- Event log cleanup may clear an entire log channel once matching Roblox/Bloxstrap/Fishstrap entries are detected. If you need full log history, export logs first.
+- ShimCache is kernel-managed binary cache data. The cleaner reports its presence, but does not attempt unsafe selective ShimCache edits.
 
 ## Usage Examples
 
