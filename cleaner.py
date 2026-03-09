@@ -114,8 +114,8 @@ class RobloxCleaner:
         info = {
             1: "Kill any running Roblox executables to avoid file locks.",
             2: "Remove installs, cache, shortcuts, and Store/UWP package.",
-            3: "Delete Roblox registry keys, uninstall entries, protocol handlers.",
-            4: "Clear temp/cache, prefetch, crash dumps, recent items.",
+            3: "Delete registry keys plus MUICache/UserAssist and appcompat traces.",
+            4: "Clear temp/cache, prefetch, jump lists, crash dumps, recent items.",
             5: "Reset networking, flush DNS, clean firewall rules, hosts, tasks.",
             6: "Delete saved Windows credentials related to Roblox.",
         }
@@ -592,6 +592,9 @@ class RobloxCleaner:
 
         # Uninstall entries with matching DisplayName
         self.remove_uninstall_entries()
+        self.cleanup_mui_cache()
+        self.cleanup_userassist()
+        self.amcache_shimcache_awareness()
         print("  Registry cleanup complete.")
         return True
     
@@ -620,6 +623,8 @@ class RobloxCleaner:
                         except Exception as fe:
                             self.status(f"  Could not delete temp {f}: {fe}", "err")
                 self.cleanup_prefetch_and_logs()
+                self.cleanup_jump_lists()
+                self.filter_event_logs()
         except Exception as e:
             self.status(f"  Temp cleanup error: {e}", "err")
         
@@ -841,6 +846,203 @@ class RobloxCleaner:
                 self.status("  No matching hosts entries found.", "warn")
         except Exception as e:
             self.status(f"  Hosts cleanup error: {e}", "err")
+
+    def cleanup_mui_cache(self):
+        print("Cleaning MUICache entries...")
+        cmd = [
+            "powershell","-NoProfile","-Command",
+            (
+                "$keys = @('HKCU:\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache',"
+                "'HKCU:\\Software\\Microsoft\\Windows\\ShellNoRoam\\MUICache');"
+                "$terms = '(?i)roblox|bloxstrap|fishstrap';"
+                "foreach ($k in $keys) { if (Test-Path $k) {"
+                " try { $props = (Get-ItemProperty -Path $k -ErrorAction Stop).PSObject.Properties |"
+                "        Where-Object { $_.Name -notmatch '^PS' -and ($_.Name -match $terms -or ([string]$_.Value) -match $terms) };"
+                "       foreach ($p in $props) {"
+                "         try { Remove-ItemProperty -Path $k -Name $p.Name -ErrorAction Stop;"
+                "               Write-Output ('DELETED_MUI: ' + $k + ' -> ' + $p.Name) }"
+                "         catch { Write-Output ('FAILED_MUI: ' + $k + ' -> ' + $p.Name) }"
+                "       }"
+                " } catch {} } }"
+            )
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_MUI: "):
+                    deleted += 1
+                    self.status(f"  Deleted MUICache value: {line.split(': ', 1)[1]}", "ok")
+                elif line.startswith("FAILED_MUI: "):
+                    self.status(f"  Failed MUICache value deletion: {line.split(': ', 1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching MUICache values found.", "warn")
+        except Exception as e:
+            self.status(f"  MUICache cleanup error: {e}", "err")
+
+    def cleanup_userassist(self):
+        print("Cleaning UserAssist traces...")
+        cmd = [
+            "powershell","-NoProfile","-Command",
+            (
+                "$base='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist';"
+                "$terms='(?i)roblox|bloxstrap|fishstrap';"
+                "function Decode-Rot13([string]$s){"
+                " if (-not $s) { return $s }"
+                " $chars = $s.ToCharArray();"
+                " for ($i=0; $i -lt $chars.Length; $i++) {"
+                "   $c=[int][char]$chars[$i];"
+                "   if (($c -ge 65 -and $c -le 90) -or ($c -ge 97 -and $c -le 122)) {"
+                "     $b = if ($c -ge 97) {97} else {65};"
+                "     $chars[$i] = [char]((($c - $b + 13) % 26) + $b)"
+                "   }"
+                " }"
+                " return -join $chars"
+                "}"
+                "if (Test-Path $base) {"
+                " Get-ChildItem -Path $base -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -eq 'Count' } | ForEach-Object {"
+                "   $k = $_.PSPath;"
+                "   try {"
+                "     $props = (Get-ItemProperty -Path $k -ErrorAction Stop).PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' };"
+                "     foreach ($p in $props) {"
+                "       $decoded = Decode-Rot13 $p.Name;"
+                "       if ($decoded -match $terms -or $p.Name -match $terms) {"
+                "         try { Remove-ItemProperty -Path $k -Name $p.Name -ErrorAction Stop;"
+                "               Write-Output ('DELETED_UA: ' + $decoded) }"
+                "         catch { Write-Output ('FAILED_UA: ' + $decoded) }"
+                "       }"
+                "     }"
+                "   } catch {}"
+                " }"
+                "}"
+            )
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+            deleted = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_UA: "):
+                    deleted += 1
+                    self.status(f"  Deleted UserAssist value: {line.split(': ', 1)[1]}", "ok")
+                elif line.startswith("FAILED_UA: "):
+                    self.status(f"  Failed UserAssist value deletion: {line.split(': ', 1)[1]}", "err")
+            if deleted == 0:
+                self.status("  No matching UserAssist values found.", "warn")
+        except Exception as e:
+            self.status(f"  UserAssist cleanup error: {e}", "err")
+
+    def cleanup_jump_lists(self):
+        print("Cleaning jump list entries...")
+        appdata = Path(os.environ.get("APPDATA", ""))
+        locations = [
+            appdata / "Microsoft/Windows/Recent/AutomaticDestinations",
+            appdata / "Microsoft/Windows/Recent/CustomDestinations",
+        ]
+        keywords = [b"roblox", b"bloxstrap", b"fishstrap"]
+        deleted = 0
+        for location in locations:
+            if not location.exists():
+                continue
+            try:
+                for item in location.glob("*.automaticDestinations-ms"):
+                    try:
+                        raw = item.read_bytes().lower()
+                        if any(k in raw for k in keywords):
+                            item.unlink()
+                            deleted += 1
+                            self.status(f"  Deleted jump list: {item.name}", "ok")
+                    except Exception as e:
+                        self.status(f"  Could not inspect/delete jump list {item}: {e}", "err")
+                for item in location.glob("*.customDestinations-ms"):
+                    try:
+                        raw = item.read_bytes().lower()
+                        if any(k in raw for k in keywords):
+                            item.unlink()
+                            deleted += 1
+                            self.status(f"  Deleted jump list: {item.name}", "ok")
+                    except Exception as e:
+                        self.status(f"  Could not inspect/delete jump list {item}: {e}", "err")
+            except Exception as e:
+                self.status(f"  Error scanning jump list path {location}: {e}", "err")
+
+        if deleted == 0:
+            self.status("  No matching jump list files found.", "warn")
+
+    def filter_event_logs(self):
+        print("Filtering event logs for Roblox traces...")
+        cmd = [
+            "powershell","-NoProfile","-Command",
+            (
+                "$logs = @('Application','System','Windows PowerShell','Microsoft-Windows-PowerShell/Operational');"
+                "$terms = '(?i)roblox|bloxstrap|fishstrap';"
+                "foreach ($log in $logs) {"
+                " try {"
+                "  $found = Get-WinEvent -LogName $log -MaxEvents 2500 -ErrorAction Stop | Where-Object {"
+                "   $_.ProviderName -match $terms -or $_.Message -match $terms"
+                "  } | Select-Object -First 1;"
+                "  if ($found) {"
+                "   try { wevtutil cl \"$log\"; Write-Output ('CLEARED_LOG: ' + $log) }"
+                "   catch { Write-Output ('FAILED_LOG: ' + $log) }"
+                "  }"
+                " } catch {}"
+                "}"
+            )
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            cleared = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("CLEARED_LOG: "):
+                    cleared += 1
+                    self.status(f"  Cleared event log containing matches: {line.split(': ', 1)[1]}", "ok")
+                elif line.startswith("FAILED_LOG: "):
+                    self.status(f"  Could not clear event log: {line.split(': ', 1)[1]}", "err")
+            if cleared == 0:
+                self.status("  No event logs with Roblox matches detected in scanned range.", "warn")
+        except Exception as e:
+            self.status(f"  Event log filtering error: {e}", "err")
+
+    def amcache_shimcache_awareness(self):
+        print("Checking Amcache/ShimCache traces...")
+        cmd = [
+            "powershell","-NoProfile","-Command",
+            (
+                "$terms='(?i)roblox|bloxstrap|fishstrap';"
+                "$am='HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Compatibility Assistant\\Store';"
+                "$am2='HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache';"
+                "$amcache='HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache\\AppCompatCache';"
+                "if (Test-Path $am) {"
+                " try {"
+                "  $props=(Get-ItemProperty -Path $am -ErrorAction Stop).PSObject.Properties |"
+                "   Where-Object { $_.Name -notmatch '^PS' -and $_.Name -match $terms };"
+                "  foreach ($p in $props) {"
+                "   try { Remove-ItemProperty -Path $am -Name $p.Name -ErrorAction Stop;"
+                "         Write-Output ('DELETED_COMPAT_STORE: ' + $p.Name) }"
+                "   catch { Write-Output ('FAILED_COMPAT_STORE: ' + $p.Name) }"
+                "  }"
+                " } catch {}"
+                "}"
+                "if (Test-Path $am2) { Write-Output 'SHIMCACHE_PRESENT: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache' }"
+                "if (Test-Path $amcache) { Write-Output 'SHIMCACHE_BINARY_PRESENT: AppCompatCache value exists (targeted deletion not safely supported)' }"
+            )
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            removed = 0
+            for line in res.stdout.splitlines():
+                if line.startswith("DELETED_COMPAT_STORE: "):
+                    removed += 1
+                    self.status(f"  Deleted AppCompat trace: {line.split(': ', 1)[1]}", "ok")
+                elif line.startswith("FAILED_COMPAT_STORE: "):
+                    self.status(f"  Failed AppCompat trace deletion: {line.split(': ', 1)[1]}", "err")
+                elif line.startswith("SHIMCACHE_PRESENT: "):
+                    self.status(f"  ShimCache registry path exists: {line.split(': ', 1)[1]}", "warn")
+                elif line.startswith("SHIMCACHE_BINARY_PRESENT:"):
+                    self.status("  ShimCache is kernel-managed binary data; selective removal is not safely supported.", "warn")
+            if removed == 0:
+                self.status("  No matching Amcache/AppCompat trace values found.", "warn")
+        except Exception as e:
+            self.status(f"  Amcache/ShimCache awareness error: {e}", "err")
     
     def run_cleanup(self):
         """Execute all enabled cleanup steps."""
