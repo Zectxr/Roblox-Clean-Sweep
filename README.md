@@ -22,8 +22,7 @@ Fast, toggleable Roblox removal for Windows and macOS. Use this when you need a 
 - **Single-pass flow**: one run takes you from detection to cleanup, then restart.
 - **Forensic-friendly**: documents exactly what is removed for auditability.
 
-### What’s New (latest)
-- MUICache cleanup: removes matching Roblox/Bloxstrap/Fishstrap values from common per-user MUICache locations.
+### What’s New (latest)- Run registry entry cleanup: removes `RobloxPlayerBeta` from `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` to prevent autostart.- MUICache cleanup: removes matching Roblox/Bloxstrap/Fishstrap values from common per-user MUICache locations.
 - UserAssist cleanup: decodes ROT13 UserAssist entries and removes matching launch-history values.
 - Jump list cleanup: scans Automatic/Custom Destinations and deletes files containing Roblox/Bloxstrap/Fishstrap traces.
 - Event log filtering: scans common logs for Roblox/Bloxstrap/Fishstrap references and clears logs when matches are found.
@@ -137,6 +136,7 @@ chmod +x cleaner.py
   - `HKCU/HKLM Software\Roblox` and `ROBLOX Corporation`, including WOW6432Node.
   - Protocol/file handlers: `roblox`, `roblox-player`, `roblox-player-1`, `roblox-studio`, `roblox-studio-auth`; file ext: `.rbxl`, `.rbxlx`; IE `ProtocolExecute` entries.
   - Bloxstrap/Fishstrap keys and protocol classes.
+  - Run entries: removes `RobloxPlayerBeta` from `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` to prevent autostart.
   - Artifact cleanup: MUICache values, UserAssist launch-history values (ROT13-decoded), and AppCompat trace values where safe.
 - **Uninstall entries**: removes entries with `DisplayName` matching Roblox/Bloxstrap/Fishstrap across HKLM/HKCU (32/64-bit roots).
 - **Microsoft Store/UWP**: removes `ROBLOXCORPORATION*` package if present.

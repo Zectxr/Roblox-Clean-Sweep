@@ -564,6 +564,19 @@ class RobloxCleaner:
                 self.status(f"  Deleted {path}", "ok")
             except Exception as e:
                 self.status(f"  Could not delete {path}: {e}", "err")
+        
+        # Delete Run registry entries
+        run_values = [
+            "RobloxPlayerBeta",
+        ]
+        run_path = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+        for value in run_values:
+            try:
+                subprocess.run(f"reg delete \"{run_path}\" /v {value} /f", shell=True, capture_output=True, timeout=5)
+                self.status(f"  Deleted {run_path} \\{value}", "ok")
+            except Exception as e:
+                self.status(f"  Could not delete {run_path} \\{value}: {e}", "err")
+        
         # CloudStore entries via PowerShell (names containing roblox/bloxstrap/fishstrap)
         try:
             cmd = [
